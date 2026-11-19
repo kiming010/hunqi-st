@@ -6,6 +6,14 @@
     flex-wrap: wrap;
 }
 
+/* 中文按钮在弹性布局里会被压到一个字宽，变成竖排，这里不让它缩 */
+.hunqi-panel .menu_button {
+    white-space: nowrap;
+    width: auto;
+    flex: 0 0 auto;
+    padding: 4px 12px;
+}
+
 .hunqi-panel #hunqi_soul_select {
     flex: 1;
     min-width: 0;

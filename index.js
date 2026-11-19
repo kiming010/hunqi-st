@@ -58,6 +58,17 @@ function folderSupported() {
     return typeof window.showDirectoryPicker === 'function';
 }
 
+/** 不能读写文件夹时，说清楚是哪种原因。 */
+function folderProblem() {
+    if (!window.isSecureContext) {
+        return '这个页面不是 HTTPS（也不是 localhost），浏览器不让读写文件夹。';
+    }
+    if (!folderSupported()) {
+        return '这个浏览器不支持直接读写文件夹（Firefox、Safari、Brave 和大部分手机浏览器都不行）。请换电脑上的 Chrome 或 Edge 打开 ST。';
+    }
+    return null;
+}
+
 async function hasPermission(handle, ask) {
     const opts = { mode: 'readwrite' };
     if (await handle.queryPermission(opts) === 'granted') return true;
@@ -65,8 +76,9 @@ async function hasPermission(handle, ask) {
 }
 
 async function pickFolder() {
-    if (!folderSupported()) {
-        toastr.error('这个浏览器不能直接读写文件夹。请用电脑上的 Chrome 或 Edge，并且通过 localhost 或 HTTPS 打开 ST。', '魂器');
+    const problem = folderProblem();
+    if (problem) {
+        toastr.error(problem, '魂器');
         return null;
     }
     try {
@@ -76,8 +88,11 @@ async function pickFolder() {
         await refreshSouls();
         return rootDir;
     } catch (e) {
-        if (e?.name !== 'AbortError') throw e;
-        return null;
+        if (e?.name === 'AbortError') return null;
+        if (e?.name === 'SecurityError') {
+            throw new Error('浏览器不让弹出选文件夹的窗口。可能是云酒馆把 ST 套在了别的网页里面（iframe）。');
+        }
+        throw e;
     }
 }
 
@@ -425,9 +440,8 @@ jQuery(async () => {
     $('#hunqi_summarize').on('click', guard(onSummarize));
     $('#hunqi_wake').on('click', guard(onWake));
 
-    if (!folderSupported()) {
-        say('这个浏览器不能直接读写文件夹。请用电脑上的 Chrome 或 Edge，并且通过 localhost 或 HTTPS 打开 ST。');
-    }
+    const problem = folderProblem();
+    if (problem) say(problem);
 
     // 记住的文件夹：先显示出来，点按钮时再要权限
     rootDir = await idbGet('root');
