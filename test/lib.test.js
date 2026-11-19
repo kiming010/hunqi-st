@@ -9,6 +9,7 @@ import path from 'node:path';
 import {
     countMessages, parseJsonl, saveSoul, listSouls, loadSoul,
     readSummary, writeSummary, chunkMessages, buildSummaryPrompt, putSummaryIntoChat, cleanText,
+    MemDir, zipDir, unzipToDir, crc32, findSoulRoot,
 } from '../lib.js';
 
 // ---------- 用 Node 的文件系统模拟浏览器的 FileSystemDirectoryHandle ----------
@@ -243,4 +244,66 @@ test('倒回 ST：只有一条消息时放不下', () => {
 
 test('cleanText：去标签、压空行', () => {
     assert.equal(cleanText('<div>你好</div>\n\n\n\n再见'), '你好\n\n再见');
+});
+
+// ---------- 存档文件（zip） ----------
+
+test('crc32：和标准值一致', () => {
+    assert.equal(crc32(new TextEncoder().encode('123456789')), 0xcbf43926);
+});
+
+test('存档文件：内存魂器 → zip → 解回来，聊天原件、卡、摘要都一字不差', async () => {
+    const mem = new MemDir('');
+    const raw = stChat(300);
+    await saveSoul(mem, { ...SOUL, card: CARD, chats: [{ file: '小雪 - 第一段.jsonl', raw }] });
+    await writeSummary(mem, 'soul-1', '小雪 - 第一段.jsonl', { text: '我们认识了。', covered: 300 });
+
+    const zip = await zipDir(mem);
+    assert.ok(zip.size < Buffer.byteLength(raw), '文字应该被压缩');
+
+    const back = await unzipToDir(zip);
+    const soul = await loadSoul(back, 'soul-1');
+    assert.equal(soul.chats[0].file, '小雪 - 第一段.jsonl');
+    assert.equal(soul.chats[0].raw, raw);
+    assert.deepEqual(new Uint8Array(await soul.card.arrayBuffer()), new Uint8Array(await CARD.arrayBuffer()));
+    assert.equal(soul.summaries['小雪 - 第一段.jsonl'].text, '我们认识了。');
+    assert.equal(soul.manifest.active_chat, '小雪 - 第一段');
+});
+
+test('存档文件：zip 被改坏了要报错，不能悄悄读出错的东西', async () => {
+    const mem = new MemDir('');
+    await saveSoul(mem, { ...SOUL, chats: [{ file: 'a.jsonl', raw: 'x'.repeat(10) }] });
+    const bytes = new Uint8Array(await (await zipDir(mem)).arrayBuffer());
+    const i = bytes.indexOf('x'.charCodeAt(0));
+    bytes[i] = 'y'.charCodeAt(0);
+    await assert.rejects(unzipToDir(bytes), /坏了/);
+    await assert.rejects(unzipToDir(new Uint8Array([1, 2, 3])), /不是一个 zip/);
+});
+
+test('存档文件：用户自己打包时多包了一层文件夹，也能找到魂器', async () => {
+    const outer = new MemDir('');
+    const inner = await outer.getDirectoryHandle('我的魂器', { create: true });
+    await saveSoul(inner, { ...SOUL, chats: [{ file: 'a.jsonl', raw: stChat(2) }] });
+    const back = await unzipToDir(await zipDir(outer));
+    const root = await findSoulRoot(back);
+    assert.equal((await listSouls(root)).length, 1);
+});
+
+test('存档文件：真文件夹也能直接打包', async () => {
+    const root = await freshRoot('zip');
+    await saveSoul(root, { ...SOUL, chats: [{ file: 'a.jsonl', raw: stChat(5) }] });
+    const back = await unzipToDir(await zipDir(root));
+    assert.equal((await loadSoul(back, 'soul-1')).chats[0].raw, stChat(5));
+});
+
+// ---------- http 页面没有 crypto.subtle ----------
+
+test('纯 JS 的 SHA-256：和浏览器自带的结果一样（各种长度都试）', async () => {
+    const { sha256Js } = await import('../lib.js');
+    const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+    for (const n of [0, 1, 55, 56, 63, 64, 65, 119, 1000, 100000]) {
+        const bytes = new TextEncoder().encode('小'.repeat(n).slice(0, n) + 'a'.repeat(n % 7));
+        const want = hex(await crypto.subtle.digest('SHA-256', bytes));
+        assert.equal(hex(sha256Js(bytes)), want, `长度 ${bytes.length}`);
+    }
 });
