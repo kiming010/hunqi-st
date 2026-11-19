@@ -1,0 +1,24 @@
+.hunqi-panel .hunqi-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0;
+    flex-wrap: wrap;
+}
+
+.hunqi-panel #hunqi_soul_select {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+}
+
+.hunqi-panel .hunqi-hint {
+    opacity: 0.8;
+    font-size: 0.9em;
+}
+
+.hunqi-summary {
+    white-space: pre-wrap;
+    text-align: left;
+    line-height: 1.6;
+}

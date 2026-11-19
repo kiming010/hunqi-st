@@ -1,0 +1,9 @@
+{
+    "name": "hunqi-st",
+    "private": true,
+    "type": "module",
+    "description": "只给本地测试用（node --test）。ST 加载插件时不看这个文件。",
+    "scripts": {
+        "test": "node --test"
+    }
+}
